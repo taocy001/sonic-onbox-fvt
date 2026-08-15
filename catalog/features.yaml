@@ -1,0 +1,366 @@
+# SONiC full-coverage feature catalog -- single source of truth for coverage tracking and case selection.
+#
+# Fields per feature point:
+#   id            stable identifier (domain.feature)
+#   domain        feature domain (maps to a pytest marker)
+#   desc          one-line description
+#   cli           main command line(s) involved (the object under test)
+#   traffic       whether it programs chip entries and affects traffic (true => needs hairpin traffic verification)
+#   pattern       verification pattern A (single-port punt to CPU) / B (dual-port counter) / C (dual-port capture) / null (pure CLI/DB)
+#   verify        counter | capture | asicdb | cli | trap
+#   module        test file carrying the case
+#   status        planned | implemented | passing | skipped
+#
+# Progress: land the 4 domains (l2/l3/acl/trap) first, the rest planned. `make coverage` builds the matrix from this.
+
+meta:
+  hwsku: PLAT-A-128Q
+  asic: vendor-x-asic-a
+  loopback: "bcmsh SDK6 'port cd(N-1) lb=mac'; EthernetN<->cd(N-1) verified on real hardware"
+
+features:
+  # ===================== L2 =====================
+  - id: l2.vlan.create
+    domain: l2
+    desc: Create/delete VLAN, add members (tagged/untagged)
+    cli: ["config vlan add/del", "config vlan member add/del", "show vlan brief"]
+    traffic: false
+    pattern: null
+    verify: asicdb
+    module: tests/features/l2/test_vlan.py
+    status: implemented
+  - id: l2.vlan.untagged_fwd
+    domain: l2
+    desc: Untagged unicast forwarding within the same VLAN
+    cli: ["config vlan member add -u"]
+    traffic: true
+    pattern: B
+    verify: counter
+    module: tests/features/l2/test_vlan.py
+    status: implemented
+  - id: l2.vlan.tag_push_pop
+    domain: l2
+    desc: Push/pop VLAN tag on trunk-port egress (packet rewrite)
+    cli: ["config vlan member add (tagged)"]
+    traffic: true
+    pattern: C
+    verify: capture
+    module: tests/features/l2/test_vlan.py
+    status: implemented
+  - id: l2.fdb.static
+    domain: l2
+    desc: Static FDB entry programming and forwarding hit
+    cli: ["config fdb add/del", "show mac"]
+    traffic: true
+    pattern: B
+    verify: counter
+    module: tests/features/l2/test_fdb.py
+    status: implemented
+  - id: l2.fdb.dynamic_learn
+    domain: l2
+    desc: Dynamic MAC learning (source MAC enters FDB)
+    cli: ["show mac"]
+    traffic: true
+    pattern: A
+    verify: asicdb
+    module: tests/features/l2/test_fdb.py
+    status: implemented
+  - id: l2.fdb.aging
+    domain: l2
+    desc: FDB aging (entry disappears after the aging time expires)
+    cli: ["config mac aging_time", "show mac"]
+    traffic: true
+    pattern: A
+    verify: asicdb
+    module: tests/features/l2/test_fdb.py
+    status: planned
+  - id: l2.flood.unknown_unicast
+    domain: l2
+    desc: Unknown unicast floods to the other members of the VLAN
+    cli: []
+    traffic: true
+    pattern: B
+    verify: counter
+    module: tests/features/l2/test_flood.py
+    status: planned
+  - id: l2.flood.broadcast
+    domain: l2
+    desc: Broadcast frame flooding
+    cli: []
+    traffic: true
+    pattern: B
+    verify: counter
+    module: tests/features/l2/test_flood.py
+    status: planned
+
+  # ===================== L3 =====================
+  - id: l3.intf.ip
+    domain: l3
+    desc: Configure interface IP, generating a connected route and a RIF
+    cli: ["config interface ip add/del", "show ip interfaces"]
+    traffic: false
+    pattern: null
+    verify: asicdb
+    module: tests/features/l3/test_intf_ip.py
+    status: implemented
+  - id: l3.route.static
+    domain: l3
+    desc: Static route programming and longest-prefix-match forwarding
+    cli: ["config route add/del", "show ip route"]
+    traffic: true
+    pattern: C
+    verify: capture
+    module: tests/features/l3/test_route_static.py
+    status: implemented
+  - id: l3.route.ttl_decrement
+    domain: l3
+    desc: Routed forwarding TTL-1 with SMAC/DMAC rewrite
+    cli: []
+    traffic: true
+    pattern: C
+    verify: capture
+    module: tests/features/l3/test_route_static.py
+    status: implemented
+  - id: l3.neighbor.arp
+    domain: l3
+    desc: Neighbor/ARP resolution and NEIGH entry
+    cli: ["ip neigh", "show arp"]
+    traffic: true
+    pattern: A
+    verify: trap
+    module: tests/features/l3/test_neighbor.py
+    status: implemented
+  - id: l3.ecmp
+    domain: l3
+    desc: ECMP multi-nexthop load sharing
+    cli: ["config route add ... nexthop (multi)"]
+    traffic: true
+    pattern: B
+    verify: counter
+    module: tests/features/l3/test_ecmp.py
+    status: planned
+
+  # ===================== ACL =====================
+  - id: acl.table.create
+    domain: acl
+    desc: Create an ACL table and bind it to a port, programming SAI_ACL_TABLE
+    cli: ["config acl add table", "show acl table"]
+    traffic: false
+    pattern: null
+    verify: asicdb
+    module: tests/features/acl/test_acl_basic.py
+    status: implemented
+  - id: acl.rule.drop
+    domain: acl
+    desc: ACL rule DROP matching traffic
+    cli: ["acl-loader update", "config acl"]
+    traffic: true
+    pattern: B
+    verify: counter
+    module: tests/features/acl/test_acl_basic.py
+    status: implemented
+  - id: acl.rule.redirect_cpu
+    domain: acl
+    desc: ACL redirect/copy to CPU (trap verification)
+    cli: ["acl-loader update"]
+    traffic: true
+    pattern: A
+    verify: capture
+    module: tests/features/acl/test_acl_basic.py
+    status: implemented
+  - id: acl.counter
+    domain: acl
+    desc: ACL rule hit counter
+    cli: ["show acl rule", "aclshow"]
+    traffic: true
+    pattern: B
+    verify: counter
+    module: tests/features/acl/test_acl_basic.py
+    status: planned
+
+  # ===================== Trap / CoPP =====================
+  - id: trap.arp
+    domain: trap
+    desc: ARP request/response punted to CPU
+    cli: ["show ip interfaces"]
+    traffic: true
+    pattern: A
+    verify: capture
+    module: tests/features/trap/test_copp.py
+    status: implemented
+  - id: trap.lldp
+    domain: trap
+    desc: LLDP packet punted to CPU
+    cli: ["show lldp table"]
+    traffic: true
+    pattern: A
+    verify: capture
+    module: tests/features/trap/test_copp.py
+    status: implemented
+  - id: trap.lacp
+    domain: trap
+    desc: LACP (slow proto) punted to CPU
+    cli: []
+    traffic: true
+    pattern: A
+    verify: capture
+    module: tests/features/trap/test_copp.py
+    status: planned
+  - id: trap.bgp
+    domain: trap
+    desc: BGP (TCP179) destined to the box, punted to CPU
+    cli: []
+    traffic: true
+    pattern: A
+    verify: capture
+    module: tests/features/trap/test_copp.py
+    status: planned
+  - id: copp.rate_limit
+    domain: trap
+    desc: CoPP rate-limiting takes effect per trap class
+    cli: ["show copp"]
+    traffic: true
+    pattern: A
+    verify: counter
+    module: tests/features/trap/test_copp.py
+    status: planned
+
+  # ===================== QoS (Phase 3) =====================
+  - id: qos.dscp_remap
+    domain: qos
+    desc: DSCP -> TC -> queue mapping and egress remark
+    cli: ["config qos", "show qos"]
+    traffic: true
+    pattern: C
+    verify: capture
+    module: tests/features/qos/test_dscp.py
+    status: planned
+  - id: qos.pcp_remap
+    domain: qos
+    desc: PCP/dot1p mapping
+    cli: []
+    traffic: true
+    pattern: C
+    verify: capture
+    module: tests/features/qos/test_pcp.py
+    status: planned
+  - id: qos.wred
+    domain: qos
+    desc: WRED/ECN marking
+    cli: ["config qos"]
+    traffic: true
+    pattern: C
+    verify: capture
+    module: tests/features/qos/test_wred.py
+    status: planned
+  - id: qos.pfc
+    domain: qos
+    desc: PFC pause frames
+    cli: ["config interface pfc"]
+    traffic: true
+    pattern: A
+    verify: counter
+    module: tests/features/qos/test_pfc.py
+    status: planned
+
+  # ===================== Mirror (Phase 3) =====================
+  - id: mirror.span
+    domain: mirror
+    desc: Local port mirroring (SPAN)
+    cli: ["config mirror_session add", "show mirror_session"]
+    traffic: true
+    pattern: C
+    verify: capture
+    module: tests/features/mirror/test_span.py
+    status: planned
+  - id: mirror.erspan
+    domain: mirror
+    desc: ERSPAN remote mirroring encapsulation
+    cli: ["config mirror_session add (erspan)"]
+    traffic: true
+    pattern: C
+    verify: capture
+    module: tests/features/mirror/test_erspan.py
+    status: planned
+
+  # ===================== LAG (Phase 3) =====================
+  - id: lag.create
+    domain: lag
+    desc: PortChannel creation and member addition
+    cli: ["config portchannel add", "config portchannel member add"]
+    traffic: false
+    pattern: null
+    verify: asicdb
+    module: tests/features/lag/test_lag.py
+    status: planned
+  - id: lag.hash
+    domain: lag
+    desc: LAG members share traffic by hash
+    cli: []
+    traffic: true
+    pattern: B
+    verify: counter
+    module: tests/features/lag/test_lag.py
+    status: planned
+
+  # ===================== VXLAN (Phase 3) =====================
+  - id: vxlan.tunnel
+    domain: vxlan
+    desc: VTEP/tunnel creation and VNI mapping
+    cli: ["config vxlan add", "show vxlan"]
+    traffic: false
+    pattern: null
+    verify: asicdb
+    module: tests/features/vxlan/test_vxlan.py
+    status: planned
+  - id: vxlan.encap
+    domain: vxlan
+    desc: Egress VXLAN encapsulation (packet verification)
+    cli: []
+    traffic: true
+    pattern: C
+    verify: capture
+    module: tests/features/vxlan/test_vxlan.py
+    status: planned
+
+  # ===================== STP (Phase 3) =====================
+  - id: stp.pvst_state
+    domain: stp
+    desc: PVST port state machine and blocking
+    cli: ["config spanning_tree", "show spanning_tree"]
+    traffic: true
+    pattern: B
+    verify: counter
+    module: tests/features/stp/test_stp.py
+    status: planned
+
+  # ===================== CRM (Phase 3) =====================
+  - id: crm.thresholds
+    domain: crm
+    desc: CRM resource thresholds and alerts
+    cli: ["config crm", "crm show resources all"]
+    traffic: false
+    pattern: null
+    verify: cli
+    module: tests/features/crm/test_crm.py
+    status: planned
+
+  # ===================== Counters / sFlow (Phase 3) =====================
+  - id: counters.port
+    domain: counters
+    desc: Port counter accuracy
+    cli: ["show interfaces counters", "portstat"]
+    traffic: true
+    pattern: B
+    verify: counter
+    module: tests/features/counters/test_port_counters.py
+    status: planned
+  - id: counters.sflow
+    domain: counters
+    desc: sFlow sample punt
+    cli: ["config sflow", "show sflow"]
+    traffic: true
+    pattern: A
+    verify: capture
+    module: tests/features/counters/test_sflow.py
+    status: planned

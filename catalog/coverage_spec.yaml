@@ -1,0 +1,127 @@
+# Master coverage matrix: encodes the full capability spec as a trackable checklist (single source of truth).
+# Gap analysis against the current state of the 405 cases. Each subdomain is annotated with:
+#   leaves      number of leaf function points in this subdomain (rough estimate)
+#   status      done (implemented cases) / partial (partial / structure exists) / todo (not started)
+#   testability degree to which it's testable on this DUT (single box + hairpin loopback):
+#     T1 = fully testable: config -> CONFIG_DB/ASIC_DB + single-box loopback data-plane behavior
+#     T2 = config/programming testable: can configure + verify chip programming, but full behavior needs a peer / convergence / timing
+#     T3 = needs external hardware: traffic generator / RoCE NIC / >=2 devices / AI NIC / optics; behavior not testable on a single box
+#     T4 = platform gap / not applicable: unsupported by this image or chip, or a proprietary AI protocol that isn't standard SONiC
+#   note        key remarks
+
+meta:
+  dut: x86_64-vendor-a_SW-A-128Q-r0 / PLAT-A-128Q / ASIC-A(asicA) / SDK6
+  current_real_cases: "154 functional + 374 cli-smoke + chip-tables = 547 collectable"
+  spec_total_leaves: ~700
+  honest_coverage: "after waves A+B, the T1+T2 bulk has implemented cases (the functional-correctness layer of ~half the spec); T3/T4 (perf/RoCE/multi-node/AI-Fabric) is config-layer + skip; all pending on-device regression"
+  status_note: "code written, compiles + collects on the build machine; not yet verified on device (per instructions); rc-guarded skips where CLI is uncertain, device defects not softened"
+
+domains:
+
+  interface-mgmt:
+    port-mgmt: {leaves: 12, status: partial, testability: T2, note: "Startup/Shutdown/description done; FEC/autoneg/breakout/lpmode/PRBS/error-down need optics or hardware, and the transceiver command still crashes on this box (T3/T4)"}
+    MTU: {leaves: 5, status: todo, testability: T1, note: "port/PC/VLAN-IF/subif/jumbo MTU config + send-packet verification doable"}
+    logical-interface: {leaves: 4, status: partial, testability: T1, note: "Loopback/Null0/VLAN-IF/sub-if config + RIF/ASIC verification"}
+    optics: {leaves: 6, status: todo, testability: T3, note: "DOM/CMIS/presence need real optics; syseeprom/transceiver commands crash on this box (recorded)"}
+
+  l2-switching:
+    MAC: {leaves: 13, status: partial, testability: T1, note: "static/dynamic learning/aging/flush/filter/blackhole testable; move/flapping/capacity-8K/rate-2K need a traffic generator (T3)"}
+    VLAN: {leaves: 14, status: partial, testability: T1, note: "create/member/access/trunk/native/range/BUM testable; QinQ/PVLAN/VLAN-translation/hybrid to be done"}
+    Port-Channel: {leaves: 22, status: partial, testability: T2, note: "create testable; full LACP (priority/key/fallback/minlinks/fast) + hash sharing + MLAG need a peer/traffic/two boxes (T3)"}
+    LLDP: {leaves: 11, status: partial, testability: T1, note: "trap tested; mode/TLV (chassis/port/ttl/mgmt-addr/802.1 & 802.3 extensions) testable via tx/rx"}
+    loop-protection-stp: {leaves: 6, status: partial, testability: T2, note: "STP enable tested; RSTP/MSTP/BPDU-Guard/Root-Guard/loop-detection need peer BPDUs / multi-instance verification"}
+
+  l3-routing:
+    ip-address: {leaves: 3, status: partial, testability: T1, note: "IPv4/IPv6/secondary IP config + RIF/route verification"}
+    ARP: {leaves: 13, status: partial, testability: T1, note: "static/dynamic/aging/GARP/proxy/arp-to-host testable; conflict detection/anti-attack/rate-8K2K need a traffic generator (T3)"}
+    NDP: {leaves: 12, status: todo, testability: T1, note: "ND/NDP-proxy/RA/DAD/UNA/RA-Guard/SEND testable; capacity/rate need a traffic generator (T3)"}
+    basic-routing: {leaves: 9, status: partial, testability: T1, note: "v4/v6 static/default/floating/Null0/distance/v4-over-v6-nexthop testable"}
+    PBR: {leaves: 4, status: todo, testability: T1, note: "v4/v6 policy routing + binding + nexthop action, config + ASIC verification"}
+    ECMP: {leaves: 9, status: partial, testability: T2, note: "nexthop_group programming tested; hash sharing/WECMP/flowlet/4K groups/failover <1s need a traffic generator (T3)"}
+
+  BGP:
+    bgp-basics: {leaves: 9, status: partial, testability: T2, note: "exabgp single-peer structure written; eBGP/iBGP/RR/peer-group/unnumbered/4byteAS testable for session + routes; peer-1K/routes-8.5M/sharing need a scale rig (T3)"}
+    bgp-convergence-multipath: {leaves: 8, status: todo, testability: T2, note: "multipath/UCMP/BFD-interworking testable for programming; convergence speed/scale/learning rate need scale (T3)"}
+    bgp-advanced: {leaves: 12, status: todo, testability: T2, note: "RR/allowas-in/redistribution/aggregation/GR/MP-BGP/BMP/damping testable; BGP-LS/LU/SRv6-SID/DPF partly need feature support (T4)"}
+    bgp-route-policy-match: {leaves: 12, status: todo, testability: T1, note: "as-path/prefix/MED/community/egress-interface matching route-map, config + behavior testable"}
+    bgp-route-policy-set: {leaves: 12, status: todo, testability: T1, note: "set as-path/MED/community + various lists + timer, config + behavior testable"}
+    BGP-EVPN: {leaves: 9, status: todo, testability: T3, note: "Type-1/2/3/5/anycast-gw/IRB/VM-migration/ESI multihoming need >=2 nodes + VTEP + server (T3)"}
+
+  IGP_SRv6_VRF:
+    OSPF: {leaves: 9, status: todo, testability: T2, note: "OSPFv2/v3/network-types/areas/MD5/redistribution/GR testable for adjacency + LSDB (single-box loopback adjacency needs tuning)"}
+    SRv6: {leaves: 4, status: todo, testability: T4, note: "IS-IS+SRv6/uSID/deterministic-path/VPN-SID need chip SRv6 support (ASIC-A TBD) + multiple nodes"}
+    RoutingPolicy: {leaves: 2, status: todo, testability: T1, note: "prefix-list/route-map config + behavior"}
+    VRF: {leaves: 5, status: todo, testability: T1, note: "interface-bind-VRF/loopback-bind-VRF/route-leaking/mgmt-VRF/>=64VRF testable for programming"}
+    DHCP: {leaves: 8, status: partial, testability: T2, note: "v4 relay structure written; v6 relay/option82 format/snooping/local server pool/over-VXLAN/concurrency-50 need a server + integration"}
+
+  virtualization-tunnels:
+    VXLAN: {leaves: 8, status: partial, testability: T2, note: "tunnel create tested; encap/decap/multi-VTEP/VLAN-VNI/VRF-VNI/BUM/ECN/IPIP need a peer VTEP + traffic (partly T3)"}
+
+  QoS:
+    classification-scheduling: {leaves: 9, status: partial, testability: T2, note: "dot1p/dscp/acl classification + SP/WRR/DWRR/shaping/rate-limit/WRED testable for programming; scheduling-behavior ratios need a traffic generator (T3)"}
+    Rewrite: {leaves: 5, status: todo, testability: T2, note: "remark TC/DSCP/PCP + ACL match, need to capture the rewritten packet (Pattern C collector, VERIFY-ON-HW)"}
+    DCB: {leaves: 5, status: todo, testability: T3, note: "ECN/PFC/PFC-watchdog/DCBX/MMU config programmable; PFC deadlock/DCBX negotiation need a peer + traffic (T3)"}
+    Buffer: {leaves: 13, status: partial, testability: T2, note: "pool/profile/PG/queue/thresholds/dynamic_th testable for programming; but this hwsku lacks buffers.json.j2 (T4, recorded)"}
+
+  lossless-congestion-control:
+    RoCE_UEC: {leaves: 14, status: todo, testability: T3, note: "RoCEv2/DCQCN/packet-spray/LLR/CBFC/UET-CMS/packet-trimming/UE-link negotiation need a RoCE NIC + host + traffic; behavior not testable on a single box"}
+
+  Security:
+    CoPP: {leaves: 3+19, status: partial, testability: T1, note: "trap punt (LLDP/ARP) tested; full trap types (bgp/bfd/dhcp/lacp/udld/ip2me/ttl_error/sample...) + rate-limit mostly testable on a single box for trap + CoPP counters"}
+    ACL: {leaves: 30, status: partial, testability: T1, note: "table (L2/L3/L3V6/UDF/RoCE/Mirror/CACL) + action (permit/deny/counter/redirect/mirror/remark/policer) + match (5-tuple/dscp/vlan/mac/tcpflags/port) + in/out mostly single-box testable; scale-2k/programming-rate need scale (T3)"}
+    AAA: {leaves: 4+, status: partial, testability: T2, note: "tacacs/radius/ldap config tested; full authn/authz/audit need a real server + login trigger (VERIFY-ON-HW)"}
+    device-port-security: {leaves: 6, status: todo, testability: T3, note: "secure-boot/802.1X/port-security/IP-source-guard/DAI/MACsec need a peer / auth server / MACsec interop (mostly T3/T4)"}
+
+  reliability:
+    destacking: {leaves: 6, status: todo, testability: T3, note: "the concept relies on an eBGP/ECMP/BFD/MC-LAG/EVPN combination; needs multi-node verification"}
+    software-architecture: {leaves: 3, status: partial, testability: T1, note: "container/config-db already implicit; warm-restart (BGP) / hot-patch testable"}
+    MC-LAG: {leaves: 4, status: todo, testability: T3, note: "needs >=2 devices + dual-homed server"}
+    BFD: {leaves: 4, status: todo, testability: T2, note: "BFD session (static/BGP/OSPF interworking) testable for programming + session establishment (single-box loopback peer); 1024 sessions / <1s need scale"}
+    SLA: {leaves: 1, status: todo, testability: T2, note: "echo/track-static testable for programming"}
+    Monitor-Link: {leaves: 3, status: todo, testability: T1, note: "uplink/downlink linkage group config + behavior single-box testable"}
+    VRRP: {leaves: 1, status: todo, testability: T2, note: "VRRPv2/v3 testable for programming + master election (a peer / two boxes is more faithful)"}
+    power-fan-redundancy: {leaves: 8, status: todo, testability: T3, note: "N+1/hot-swap/active-standby switchover/DPSH/DLDP/REUP/RLDP physical redundancy; pmon state partly readable (T2), switchover behavior needs hardware"}
+
+  monitoring-ops:
+    port-traffic-stats: {leaves: 13, status: partial, testability: T1, note: "RX/TX_OK/ERR/DRP/frame-length buckets/broadcast-multicast-unicast counters; send traffic + read COUNTERS_DB / chip counters testable (note the SAI counter oper-down limitation, recorded)"}
+    tm-traffic-stats: {leaves: 8, status: todo, testability: T2, note: "per-queue enqueue/drop/watermark/PG/pool/WRED/ECN-marked counters; readable but need to induce congestion (partly T3)"}
+    pfc-stats: {leaves: 8, status: todo, testability: T2, note: "per-port per-priority PFC frames/watchdog/backpressure duration/drop classification/RIF_STAT readable; need PFC traffic (partly T3)"}
+    crm-stats: {leaves: 5, status: partial, testability: T1, note: "route/nexthop/neighbor/fdb/acl usage + thresholds, partly tested, can be completed"}
+    bgp-stats: {leaves: 3, status: todo, testability: T2, note: "per-neighbor PfxRcd/PfxSnt/state/uptime/RIB-FIB entries, read alongside BGP cases"}
+    SNMP: {leaves: 17, status: partial, testability: T1, note: "v2c/v3/RFC1213/IF-MIB/ifXTable/Q-BRIDGE/LLDP-MIB/ENTITY/PFC-MIB/queue-MIB/HOST-RES/trap/ACL many MIBs verifiable via snmpget/walk"}
+    network-quality-diag: {leaves: 11, status: partial, testability: T2, note: "SPAN/RSPAN/ERSPAN/sFlow (v4v6) structure written; Mirror-on-Drop/netstream/gRPC/HFT need a collector + integration; sflow masked in this image (T4)"}
+    int-inband-telemetry: {leaves: 9, status: todo, testability: T3, note: "INT/IFA/buffer-drop-capture/postcard/IFIT/CSIG/WJH need chip INT support + collector + traffic (mostly T3/T4)"}
+    telemetry-export-gnmi: {leaves: 5, status: todo, testability: T2, note: "gNMI streaming/on-change/COUNTERS export/dial-out/sample interval need a gnmi client + certs, single-box testable"}
+
+  system-mgmt:
+    device-mgmt: {leaves: 3, status: partial, testability: T1, note: "console/ssh/restful/netconf + ONIE/upgrade/reboot-cause + PSU/FAN/Thermal reads"}
+    platform-mgmt: {leaves: 1, status: todo, testability: T2, note: "ECC monitoring/self-healing, state readable, triggering needs hardware"}
+    os-services: {leaves: 6, status: partial, testability: T1, note: "login/banner/user-mgmt/config-persist/time/syslog (tested)/ntp (tested) mostly testable"}
+    DevOps: {leaves: 5, status: todo, testability: T1, note: "ZTP/ansible/SCP/ping/traceroute/netconf-yang/firmware-upgrade mostly testable (upgrade needs an image)"}
+    hardware-monitoring: {leaves: 15, status: todo, testability: T2, note: "xcvrd/psud/thermalctld/fancontrol/sensord/ledd/syseepromd/pcied/chassisd/health/reboot-cause pmon daemon reads; some commands crash on this box (T4)"}
+
+  sue-esun-ai-fabric:
+    ai-fabric-encap: {leaves: 20, status: todo, testability: T4, note: "AFH/ESUN/EH-ECN/EH-CoS/RH-CRC/EthLink/ETH-X/OISA proprietary AI-Fabric protocols, not standard SONiC, need a dedicated NIC + chip support, largely not applicable to this platform"}
+    memory-semantics: {leaves: 4, status: todo, testability: T4, note: "one-sided put/get/atomic need an AI NIC + SUE stack"}
+    topology-low-latency: {leaves: 5, status: todo, testability: T3, note: "cut-through/virtual-pod/plane probing need multiple nodes + a dedicated topology"}
+
+  in-network-computing-inc:
+    collective-offload: {leaves: 5, status: todo, testability: T4, note: "all-reduce/reduce-scatter/SHARP-style reduction need chip INC support + AI workload + NIC"}
+    standardization-progress: {leaves: 3, status: todo, testability: T4, note: "UEC/UALink INC standards not yet landed, cannot be tested"}
+
+  host-network-codesign:
+    congestion-signaling: {leaves: 3, status: todo, testability: T4, note: "CSIG/host-network contract/PCM need a co-designed NIC"}
+    datapath-codesign: {leaves: 3, status: todo, testability: T4, note: "out-of-order reordering/credit feedback/DDP need NIC reorder"}
+
+  lb-adaptive-routing:
+    adaptive-routing: {leaves: 11, status: todo, testability: T3, note: "symmetric/enhanced hash single-box testable for hash distribution; WCMP/DLB/ALB/ARS/credit-AR/packet-spray/flowlet need NIC reorder + scale traffic (T3)"}
+    rail-group-orchestration: {leaves: 3, status: todo, testability: T3, note: "rail group >=128 / rail-optimized need many ports + topology + traffic"}
+
+  multicast:
+    IGMP_MLD: {leaves: 3, status: todo, testability: T2, note: "IGMPv1/2/3 + snooping/MLD/suppression testable for programming + multicast replication (single-box loopback partly testable)"}
+    pim-evpn-multicast: {leaves: 2, status: todo, testability: T3, note: "PIM-SM/SSM/MVR/Anycast-RP/MSDP/EVPN-Type6/multicast-over-VXLAN need multiple nodes + source/receivers"}
+
+  capacity-performance:
+    forwarding-table-specs: {leaves: 4, status: todo, testability: T3, note: "FIB 200K/MAC 8K/ARP 8K/ND 8K/ECMP 4K capacity and learning rate, need a traffic generator to saturate"}
+    policy-bgp-rail-specs: {leaves: 3, status: todo, testability: T3, note: "VRF64/ACL2k/LACP128/BGP-peer1K/routes-8.5M/BFD1024/Rail128 scale specs, need a scale rig"}
+    forwarding-performance-specs: {leaves: 3, status: todo, testability: T3, note: "51.2T switching capacity/Bpps/latency-ns/power need a traffic generator + power meter; single-box loopback can't test line rate"}

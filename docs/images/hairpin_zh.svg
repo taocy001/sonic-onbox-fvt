@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 470" font-family="-apple-system, PingFang SC, Microsoft YaHei, Segoe UI, Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="a-blue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#1f6feb"/></marker>
+    <marker id="a-red" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7.5" markerHeight="7.5" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#d1242f"/></marker>
+    <marker id="a-green" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#1a7f37"/></marker>
+    <marker id="a-purple" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#8250df"/></marker>
+    <marker id="a-teal" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#0d7d8c"/></marker>
+  </defs>
+
+  <rect x="0" y="0" width="880" height="470" fill="#ffffff"/>
+  <text x="440" y="30" text-anchor="middle" font-size="17" font-weight="700" fill="#1b2733">发卡环回 —— CPU 发出的帧变成等效的入向流量</text>
+  <text x="440" y="50" text-anchor="middle" font-size="12" fill="#57606a">单机、无需外部打流仪：帧被环回、重新作为入向进入流水线，如同来自外部打流仪</text>
+
+  <!-- CPU -->
+  <rect x="90" y="80" width="200" height="62" rx="10" fill="#eef2f6" stroke="#b6c2cf"/>
+  <text x="190" y="106" text-anchor="middle" font-size="14" font-weight="700" fill="#1b2733">主机 / CPU (SONiC)</text>
+  <text x="190" y="126" text-anchor="middle" font-size="11.5" fill="#57606a">scapy 发包  ·  netdev 抓包</text>
+
+  <!-- Injection port -->
+  <rect x="90" y="248" width="200" height="70" rx="8" fill="#eef2f6" stroke="#b6c2cf"/>
+  <text x="190" y="277" text-anchor="middle" font-size="13.5" font-weight="700" fill="#1b2733">前面板端口</text>
+  <text x="190" y="296" text-anchor="middle" font-size="11.5" fill="#57606a">注入  ·  环回 lb=mac</text>
+
+  <!-- ASIC pipeline (highlighted: feature under test) -->
+  <rect x="360" y="238" width="240" height="92" rx="10" fill="#fff4e6" stroke="#e0a458"/>
+  <text x="480" y="266" text-anchor="middle" font-size="14" font-weight="700" fill="#1b2733">ASIC 报文流水线</text>
+  <text x="480" y="286" text-anchor="middle" font-size="11.5" fill="#8a5a00">被测功能</text>
+  <text x="480" y="305" text-anchor="middle" font-size="11" fill="#57606a">VLAN · FDB · ACL · 路由 · QoS · trap …</text>
+
+  <!-- Egress port -->
+  <rect x="700" y="248" width="120" height="70" rx="8" fill="#eef2f6" stroke="#b6c2cf"/>
+  <text x="760" y="279" text-anchor="middle" font-size="13" font-weight="700" fill="#1b2733">出口</text>
+  <text x="760" y="298" text-anchor="middle" font-size="11" fill="#57606a">前面板端口</text>
+
+  <!-- TX counter badge -->
+  <rect x="672" y="372" width="176" height="52" rx="8" fill="#e6f6f8" stroke="#0d7d8c"/>
+  <text x="760" y="396" text-anchor="middle" font-size="12.5" font-weight="700" fill="#0b5c67">⑤B  芯片 TX 计数</text>
+  <text x="760" y="413" text-anchor="middle" font-size="11" fill="#57606a">模式 B 判据</text>
+
+  <!-- (1) CPU -> injection port -->
+  <line x1="190" y1="142" x2="190" y2="246" stroke="#1f6feb" stroke-width="2.2" marker-end="url(#a-blue)"/>
+  <text x="200" y="200" font-size="12" fill="#1f6feb">① KNET 定向 egress</text>
+
+  <!-- (2) loopback U-turn (the hairpin) -->
+  <path d="M90,266 C50,266 50,304 90,304" fill="none" stroke="#d1242f" stroke-width="3.4" marker-end="url(#a-red)"/>
+  <text x="64" y="252" font-size="12" font-weight="700" fill="#d1242f">②</text>
+  <text x="190" y="340" text-anchor="middle" font-size="11" fill="#d1242f">② lb=mac 环回：帧掉头、重新进入</text>
+
+  <!-- (3) re-ingress -> pipeline -->
+  <line x1="290" y1="283" x2="358" y2="283" stroke="#1f6feb" stroke-width="2.2" marker-end="url(#a-blue)"/>
+  <text x="324" y="275" text-anchor="middle" font-size="11.5" fill="#1f6feb">③ 再入</text>
+
+  <!-- (4) forward -> egress -->
+  <line x1="600" y1="283" x2="698" y2="283" stroke="#1a7f37" stroke-width="2.2" marker-end="url(#a-green)"/>
+  <text x="649" y="275" text-anchor="middle" font-size="11.5" fill="#1a7f37">④ 转发</text>
+
+  <!-- (5B) egress -> TX counter -->
+  <line x1="760" y1="320" x2="760" y2="370" stroke="#0d7d8c" stroke-width="2.2" marker-end="url(#a-teal)"/>
+
+  <!-- (5A) pipeline -> punt back to CPU -->
+  <path d="M450,238 L450,116 L292,116" fill="none" stroke="#8250df" stroke-width="2.2" marker-end="url(#a-purple)"/>
+  <text x="450" y="104" text-anchor="middle" font-size="11.5" fill="#8250df">⑤A 上送 CPU（trap/copy-to-CPU）→ 模式 A：inbound 抓包</text>
+
+  <!-- legend -->
+  <text x="440" y="446" text-anchor="middle" font-size="11.5" fill="#1b2733">③ 再入 = 交换机把该帧当作来自外部打流仪的流量来处理。</text>
+  <text x="440" y="463" text-anchor="middle" font-size="11" fill="#57606a">断环靠 隔离-PVID / DMAC ≠ router-MAC / discard，再入帧就此终止 —— 不成风暴。</text>
+</svg>

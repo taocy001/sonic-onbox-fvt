@@ -1,0 +1,10 @@
+allure-pytest
+pytest>=7.0
+pytest-html
+pyyaml>=5.3
+scapy>=2.4.5
+# SONiC hosts usually ship pytest / pyyaml already; scapy is not preinstalled on most images and must be added.
+# On-device install: pip3 install -r requirements.txt
+# BGP data-plane cases: the peer uses servers/bgp_speaker.py (a pure-stdlib BGP-4 speaker, **no exabgp needed**),
+#   establishing a real session with DUT FRR over veth+netns, so no extra offline packages are required.
+# Management-plane / server-integration cases implement a mock server with the Python stdlib socket module, no extra dependencies.

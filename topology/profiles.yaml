@@ -1,0 +1,266 @@
+# Device capability set + test topology inputs (asks 1/4/5).
+#
+# Test cases don't hardcode ports/VLANs/IPs; instead they reference topology roles:
+# topo.port("a") / topo.vlan("a") / topo.subnet("a").
+# Per-device differences (SDK, port naming, loopback availability, chassis, etc.) are absorbed
+# by the caps and device sections, and cases skip by capability via @needcap("loopback").
+#
+# Match precedence: device[<onie_platform>] > device[<hwsku>] > defaults.
+
+defaults:
+  default_vlan: 1000      # Default VLAN a port belongs to (each device section may override; see device sections)
+  # Asymmetric VLAN hairpin topology params (structural loop-break: p_in ingress A, p_out ingress B). Not hardcoded in cases.
+  hairpin:
+    vlan_a: 110           # Forwarding VLAN (p_in/p_out untagged, uses SONiC FDB)
+    vlan_b: 120           # Return VLAN (p_out ingress PVID; dead-end, or configure an SVI to catch ip2me)
+    svi: "10.120.0.1/24"  # VLAN B vlanif (used to test ip2me / capture post-forwarding packets)
+    probe_dst: "00:11:22:33:44:55"   # Hairpin probe destination MAC (FDB points to p_out)
+  # Logical port roles -> dynamically assigned by the framework from free ports (no hardcoded EthernetX).
+  # a,b are for the traffic pair (traffic fixture); c.. are for non-traffic / L3 / config-style cases.
+  port_roles: [a, b, c, d, e, f, g, h]
+  vlans:        # VLAN pool for tests (role -> vid)
+    a: 320
+    b: 321
+    c: 322
+    d: 323
+    e: 324
+    f: 325
+    mcast: 360
+    erspan: 361
+    coppl3: 3960    # Dedicated VLAN for the L3 injection context of CoPP protocol traps (conftest.copp_l3_ctx)
+    l2fwd: 2510     # Forwarding VLAN for L2 learning/FDB cases (conftest.l2_fwd_vlan; used on devices that don't forward on the home VLAN)
+  subnets:      # L3 test subnet pool (role -> dut/peer/prefix)
+    a: {dut: "10.80.1.1", peer: "10.80.1.2", prefix: 24}
+    b: {dut: "10.80.2.1", peer: "10.80.2.2", prefix: 24}
+    c: {dut: "10.80.3.1", peer: "10.80.3.2", prefix: 24}
+    d: {dut: "10.80.4.1", peer: "10.80.4.2", prefix: 24}
+    e: {dut: "10.80.5.1", peer: "10.80.5.2", prefix: 24}
+    # bgp: session subnet (veth+netns peer). dut_as/peer_as for eBGP; the nexthop subnet uses subnet("c") separately (front panel).
+    bgp: {dut: "10.99.1.1", peer: "10.99.1.2", peer2: "10.99.1.3", prefix: 24, dut_as: 65001, peer_as: 65002}
+    erspan: {dut: "10.99.4.1", peer: "10.99.4.2", prefix: 24}
+    coppl3: {dut: "10.96.0.1", peer: "10.96.0.2", prefix: 24}   # copp_l3_ctx SVI address
+    dhcp: {dut: "10.99.1.1", peer: "10.99.1.2", prefix: 24}    # DHCP relay SVI gateway
+    v6a: {dut: "2001:db8:83::1", peer: "2001:db8:83::2", prefix: 64}
+    v6b: {dut: "2001:db8:84::1", peer: "2001:db8:84::2", prefix: 64}   # L3 forwarding IPv6 ingress subnet
+  macs:         # role -> MAC (peer_* peers, src injection source, dst forwarding destination)
+    peer_a: "00:de:ad:be:ef:a2"
+    peer_b: "00:de:ad:be:ef:a3"
+    peer_c: "00:de:ad:be:ef:a4"
+    src: "00:de:ad:be:ef:01"
+    src2: "00:de:ad:be:ef:02"     # Second injection source (for cases needing source isolation)
+    learn: "00:de:ad:be:ef:7a"    # Dedicated source for dynamic learning (isolated, to avoid FDB-state crosstalk with the shared src)
+    dst: "00:11:22:33:44:55"
+    probe: "00:aa:bb:cc:dd:ee"    # Hairpin / smoke probe destination
+    client: "00:de:ad:be:ef:c1"   # DHCP client, etc.
+    bcast: "ff:ff:ff:ff:ff:ff"
+  servers:      # External / integration server addresses (collectors, DHCP server, syslog, etc.)
+    sflow_collector: "10.99.3.2"
+    dhcp_server: "10.99.2.2"
+    syslog_collector: "127.0.0.1"
+  loopbacks:    # Logical loopback interface addresses (role -> cidr)
+    a: "10.10.10.10/32"
+  dscp:         # name -> DSCP value (for QoS/remark tests, so numbers aren't hardcoded)
+    default: 0
+    af11: 10
+    af21: 18
+    cs4: 32
+    ef: 46
+    test: 24
+  routes:       # Route-prefix pool under test (role -> prefix); cases don't hardcode prefixes
+    a: "10.251.0.0/24"
+    b: "10.252.0.0/24"
+    c: "10.253.0.0/24"
+    d: "10.250.0.0/24"
+    default4: "0.0.0.0/0"
+    v6a: "2001:db8:251::/64"
+  copp:         # CoPP / HOSTIF_TRAP expectations (**device-specific values go in each device section**; only the generic structural lower bounds live here).
+    # Cases (tests/test_copp_full.py) read this section per the current device platform and no longer hardcode platform numbers.
+    # Each device section declares the following keys (not placed here, to keep a deep dict merge from leaking the previous device's traps in):
+    #   enabled_trap_ids     full set of trap-ids enabled in this image (STATE_DB COPP_TRAP_TABLE, applied by coppmgrd)
+    #   route_type_trap_ids  route-type trap-ids (products of L3 lookup; not modeled as an ASIC HOSTIF_TRAP, only STATE_DB is checked)
+    #   trap_id_sai          trap-id -> expected SAI_HOSTIF_TRAP_TYPE_* (**with the SAI_HOSTIF_TRAP_TYPE_ prefix omitted**); empty list = route-type
+    #   expected_rate_tiers  (queue, CIR) rate-limit tier baseline; if declared, strict regression comparison, otherwise only structural checks
+    # For an unmatched device (build-machine dry-run), cases fall back to the generic reference set so collection still works.
+    min_trap_groups: 4    # Lower bound on the number of non-default trap-groups (structural integrity; each device section may override)
+  chip:         # Chip constants (used for chiptab numeric conversions; if not declared, conversion-style asserts skip rather than guess)
+    cell_size: null       # MMU cell size in bytes (declared per device section)
+  caps:         # Capability defaults (single-chip pizza-box baseline)
+    loopback: true        # Can set port loopback via bcmsh (prerequisite for traffic)
+    chassis: false        # Single chip, no VOQ/chassis (show chassis system-* not applicable)
+    sflow: true
+    breakout: false       # Needs optics / platform support
+    breakout_dpb: false   # DPB dynamic breakout (config interface breakout + platform.json
+                          # breakout_modes complete before it's true; consumed by tests/test_breakout_chip.py)
+    optics: false         # Needs real optics
+    acl_rule_program: true
+    macsec: false
+    bfd: true
+    vrf_route_leak: false      # Cross-VRF route leaking (`ip route ... dev <other-VRF-if> vrf <this-VRF>`) can program ASIC forwarding;
+                               # some images only support BGP-VPN-style leaking -> default false (structural skip); set true after a device is verified to support it
+    vxlan: true
+    stp: true
+    mirror_cpu_capture: true   # Can deliver egress-mirror-to-cpu0 frames to a netdev (prerequisite for capturing forwarded-frame content on a single box)
+    l2_home_forwarding: true   # The port's default home VLAN (default_vlan) can do L2 forwarding / FDB
+    qos_product_cli: false     # SONiC product QoS CLI (dscp-to-tc-map, etc.); false = community template style
+    tc_to_pg_map_usable: true  # Whether creating TC_TO_PRIORITY_GROUP_MAP is safe; images where it isn't set this false, and cases skip accordingly
+    config_reload_safe: false  # Allow cases to run config reload / config qos reload (default false; enable per-box after verification)
+
+devices:
+  # ---- DUT-1: vendor-a SW-A-128Q (PLAT-A-128Q / ASIC-A asicA / SDK6) ----
+  x86_64-vendor-a_SW-A-128Q-r0:
+    sdk: sdk6
+    diag_access: bcmcmd                 # bcmcmd over TCP works fine
+    bcm_port: {prefix: "cd", divisor: 1, offset: -1}   # EthernetN -> cd(N-1)
+    loopback_mode: mac                 # port cdN lb=mac
+    # Phase3 dual-traffic worker port blocks (FVT_WORKER=1/2, framework/worker.py). A new block must first
+    # pass a loopback capability probe.
+    # The w1 block matches the single-process default port selection (principle of minimal behavior deviation).
+    workers:
+      1: {ports: [Ethernet1, Ethernet2, Ethernet3, Ethernet4, Ethernet5, Ethernet6, Ethernet7, Ethernet8]}
+      2: {ports: [Ethernet9, Ethernet10, Ethernet11, Ethernet12, Ethernet13, Ethernet14, Ethernet15, Ethernet16]}
+    counter_prefix: MIB                 # MIB_RPKT/MIB_TPKT
+    copp:                              # CoPP expectations (strict baseline)
+      min_trap_groups: 6
+      # trap-ids enabled in STATE_DB COPP_TRAP_TABLE (dhcp/nat/sflow/macsec not enabled, so excluded)
+      enabled_trap_ids: [arp, arp_req, arp_resp, neigh_discovery, lldp, lacp, udld,
+                         bgp, bgpv6, ip2me, neighbor_miss, ttl_error]
+      # route-type traps (products of L3 lookup, not modeled as HOSTIF_TRAP)
+      route_type_trap_ids: [bgp, bgpv6, ip2me, neighbor_miss]
+      trap_id_sai:
+        arp: [ARP_REQUEST, ARP_RESPONSE]
+        arp_req: [ARP_REQUEST]
+        arp_resp: [ARP_RESPONSE]
+        neigh_discovery: [IPV6_NEIGHBOR_DISCOVERY]
+        lldp: [LLDP]
+        lacp: [LACP]
+        udld: [UDLD]
+        ttl_error: [TTL_ERROR]
+        bgp: []
+        bgpv6: []
+        ip2me: []
+        neighbor_miss: []
+      # (queue, CIR) rate-limit tier baseline
+      expected_rate_tiers: [[4, 6000], [4, 600], [4, 100], [1, 200], [1, 6000], [0, 600]]
+    caps:
+      sflow: false                     # This image doesn't support sflow
+      acl_rule_program: false          # acl-loader rules don't program the ASIC
+      buffers_full: false              # Missing buffers.json.j2
+
+  # ---- DUT-2: vendor-b SW-B (SW-B-128Q / chip / SDK6) ----
+  x86_64-vendor-b-SW-B-r0:
+    sdk: sdk6                          # Actually SDK6 (BCM.0>), not SDKLT
+    diag_access: socket               # No bcmcmd TCP; use the dsserve unix socket for a clean client
+    bcm_port: {prefix: "cd", divisor: 4, offset: 0}   # Ethernet(4k) -> cd(k), step 4 / 4 lanes
+    loopback_mode: phy                # Use lb=phy (brings the port up)
+    counter_prefix: CLMIB              # CLMIB_RPKT/CLMIB_TPKT
+    default_vlan: 1                    # Ports default to Vlan1 (not 1000) -- FDB must use the right VLAN or it won't program
+    chip:
+      cell_size: 254                   # MMU cell size in bytes
+      # alpha semantics on the SAI 8.4 line: chip alpha = 2^(dynamic_th + offset); the meaning differs across SAI lines,
+      # so this field documents that offset, and cases read the chip back to cross-check.
+      alpha_exponent_offset: -6
+    copp:                              # CoPP expectations
+      min_trap_groups: 6              # 7 non-default groups actually present (1 more SAI default group is excluded)
+      # trap-ids enabled in STATE_DB COPP_TRAP_TABLE (SONiC set: includes rip/ospf/isis/vrrp/dhcp_relay; no udld)
+      enabled_trap_ids: [rip_multicast, rip_broadcast, arp, isis, rip_unicast, ip2me,
+                         lacp, dhcp_relay, ospf, ttl, arp_proxy, vrrp, bgp, lldp]
+      # bgp/ip2me etc. are all modeled as HOSTIF_TRAP; no pure route-type traps
+      route_type_trap_ids: []
+      trap_id_sai:                    # 21 HOSTIF_TRAP types mapped one-by-one onto 14 trap-ids
+        arp: [ARP_REQUEST, ARP_RESPONSE, IPV6_NEIGHBOR_DISCOVERY]
+        lldp: [LLDP]
+        lacp: [LACP]
+        bgp: [BGP, BGPV6]
+        ospf: [OSPF, OSPFV6]
+        isis: [ISIS]
+        rip_unicast: [RIP_UNICAST]
+        rip_multicast: [RIP_MULTICAST, RIPNG_MULTICAST]
+        rip_broadcast: [RIP_BROADCAST]
+        ip2me: [IP2ME]
+        ttl: [TTL_ERROR]
+        arp_proxy: [ARP_PROXY]
+        vrrp: [VRRP, VRRPV6]
+        dhcp_relay: [DHCP, DHCPV6]
+      # (queue, CIR) rate-limit tier baseline (q0/100 q3/1000 q5/600 q4/3000 q6/600 q1/6000 q7/1000)
+      expected_rate_tiers: [[0, 100], [3, 1000], [5, 600], [4, 3000], [6, 600], [1, 6000], [7, 1000]]
+    caps:
+      # Note: use false to skip only when the feature/observation capability genuinely isn't in this image (honest -- nothing to test);
+      # when the feature is present but broken (ACL/QoS/SNMP, etc.), keep the default true -> let cases truthfully FAIL and expose the device defect, don't mask it.
+      mirror_cpu_capture: false   # Single box can't capture forwarded-frame content
+      sflow: false                # Not supported in this image
+      vxlan: false                # config vxlan command missing (image doesn't include VXLAN)
+      stp: false                  # No stpd container (image doesn't include STP)
+      qos_product_cli: true       # SONiC product QoS CLI (dscp-to-tc-map/port-queue/...)
+      breakout_dpb: true          # 1x400G[200G,100G]/2x200G/4x100G CLI
+      tc_to_pg_map_usable: false  # Creating TC_TO_PRIORITY_GROUP_MAP is unsafe (see defaults comment)
+
+  # ---- DUT-3: vendor-c-sw (ASIC-B / SDK6 / SONiC-derived OS) ----
+  x86_64-vendor-c-sw-r0:
+    sdk: sdk6                          # BCM.0 drivshell (SDK6)
+    diag_access: bcmcmd                # bcmcmd TCP direct connection available
+    bcm_port: {prefix: "d3c", divisor: 8, offset: 0}   # Ethernet(8k) -> d3c(k), 800G / 8 lanes
+                                       # WARNING: this static mapping only holds for un-broken-out ports; on a breakout deployment you must use the workers lane
+                                       # (E72+) or chiptab.port_id (reverse lookup via PC_PORT_PHYS_MAP, naturally correct for breakout ports)
+    loopback_mode: mac                 # lb=mac links up immediately; lb=phy reports "TX/RX not mapped to
+                                       # the same physical lane" digital-loopback warning and the port won't come up -- unusable
+    counter_prefix: MIB                # MIB_RPKT/MIB_TPKT
+    default_vlan: 1                    # Ports default to routed (link-mode); bridge home is Vlan1 untagged
+    workers:                           # Clean lane; avoids the Ethernet0-56 parked config ports
+      1: {ports: [Ethernet72, Ethernet80, Ethernet88, Ethernet96, Ethernet104, Ethernet112, Ethernet120, Ethernet128]}
+    chip:
+      cell_size: 420                   # MMU cell size in bytes
+      alpha_exponent_offset: 0         # SAI 15.2 line uses the standard semantics alpha=2^dynamic_th
+      # Shared-pool reservation model: shared = floor(size/cell) - floor(xoff/cell) - Sum(bound-object min) - (base + per_port x port_count)
+      pool_reserve_base_cells: 1919
+      pool_reserve_per_port_cells: 24
+    copp:                              # CoPP expectations
+      min_trap_groups: 6               # 7 actually present in STATE_DB COPP_GROUP_TABLE
+      # STATE_DB COPP_TRAP_TABLE enabled set
+      enabled_trap_ids: [arp, bgp, dhcp_relay, ip2me, lacp, lldp, ospf, ttl, vrrp]
+      route_type_trap_ids: []          # All 15 ASIC HOSTIF_TRAPs modeled; no pure route-type
+      trap_id_sai:                     # 15 HOSTIF_TRAP types in ASIC_DB mapped onto 9 trap-ids
+        arp: [ARP_REQUEST, ARP_RESPONSE, IPV6_NEIGHBOR_DISCOVERY]
+        lldp: [LLDP]
+        lacp: [LACP]
+        bgp: [BGP, BGPV6]
+        ospf: [OSPF, OSPFV6]
+        ip2me: [IP2ME]
+        ttl: [TTL_ERROR]
+        vrrp: [VRRP, VRRPV6]
+        dhcp_relay: [DHCP, DHCPV6]
+      # (queue, CIR) rate-limit tier baseline
+      expected_rate_tiers: [[0, 100], [3, 1000], [5, 600], [4, 3000], [6, 600], [1, 6000], [7, 1000]]
+    caps:
+      # SONiC trimmed build: sflow/vxlan/stp not included in the image (honest skip).
+      mirror_cpu_capture: false   # Single box can't capture forwarded-frame content; mirror is only a means to observe/capture content,
+                                  # when unavailable, content-check cases are gated to skip -- this is not a device forwarding defect.
+      sflow: false                # Not supported in this image
+      vxlan: false                # config vxlan subcommand missing (image doesn't include VXLAN)
+      stp: false                  # No stpd container (image doesn't include STP)
+      l2_home_forwarding: false   # Vlan1 is a parked, non-user VLAN (CLI legal range 2~4094; members aren't pushed to the ASIC,
+                                  # by design): L2 forwarding must be validated on a real test VLAN
+      qos_product_cli: true       # SONiC product QoS CLI
+      tc_to_pg_map_usable: false  # Creating TC_TO_PRIORITY_GROUP_MAP is unsafe (see defaults comment); cases skip
+      breakout_dpb: true          # platform.json breakout_modes complete (1x800G/2x400G[200G]/
+                                  # 4x200G[100G]/4x100G(4)) + CLI present
+
+  # ---- DUT-4: vendor-d-sw (ASIC-A / SDK6 / community baseline image) ----
+  # Read-only documentation:
+  # - Some TM table names don't exist due to ASIC differences; related cases are has_table-gated to skip
+  # - Community CLI: no product commands like dscp-to-tc-map; CONFIG_DB has no SCHEDULER/BUFFER_POOL (no QoS baseline)
+  # - No /usr/share/sonic/device/<plat>/platform.json -> DPB structurally unavailable
+  x86_64-vendor-d-sw-r0:
+    sdk: sdk6
+    diag_access: bcmcmd
+    bcm_port: {prefix: "cd", divisor: 1, offset: -1}   # Ethernet1..128 -> cd0..127 (same naming as PLAT-A;
+                                       # verify during loopback smoke, only add an explicit table if it doesn't hold)
+    loopback_mode: mac
+    counter_prefix: MIB
+    default_vlan: 1000                 # Same preset (l2) as PLAT-A; verify during deployment smoke
+    chip:
+      cell_size: 270                   # MMU cell size in bytes
+    copp:
+      min_trap_groups: 4               # Structural lower bound only; trap set not yet documented (backfill after the first run)
+    caps:
+      sflow: false                     # Same image family as PLAT-A (unsupported); verify during smoke
+      breakout_dpb: false              # No platform.json breakout_modes -> DPB structurally unavailable
